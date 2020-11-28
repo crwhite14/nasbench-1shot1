@@ -154,7 +154,7 @@ def main():
         filepath = os.path.join(args.save, 'one_shot_model_{}.obj'.format(epoch))
         torch.save(model.state_dict(), filepath)
 
-        logging.info('architecture', numpy_tensor_list)
+        # logging.info('architecture', numpy_tensor_list)
 
         # training
         train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr, epoch)
@@ -166,10 +166,17 @@ def main():
 
         utils.save(model, os.path.join(args.save, 'weights.pt'))
 
+    logging.info('loading nasbench')
+    from nasbench import api
+    data_folder = '~/nas_benchmark_datasets/'
+    nasbench = api.NASBench(os.path.expanduser(data_folder + 'nasbench_only108.tfrecord'))
+        
     logging.info('STARTING EVALUATION')
     test, valid, runtime, params = naseval.eval_one_shot_model(config=args.__dict__,
-                                                               model=arch_filename)
-    index = np.random.choice(list(range(3)))
+                                                               model=arch_filename,
+                                                               nasbench=nasbench)
+    # index = np.random.choice(list(range(3)))
+    index = 0
     logging.info('TEST ERROR: %.3f | VALID ERROR: %.3f | RUNTIME: %f | PARAMS: %d'
                  % (test[index],
                     valid[index],

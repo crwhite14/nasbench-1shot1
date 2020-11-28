@@ -104,9 +104,11 @@ def eval_one_shot_model(config, model, nasbench):
     adjacency_list = adjacency_matrix.astype(np.int).tolist()
     model_spec = api.ModelSpec(matrix=adjacency_list, ops=node_list)
     # Query nasbench
-    data = nasbench.query(model_spec)
+    # data = nasbench.query(model_spec)
+    item = nasbench.query(model_spec)
     valid_error, test_error, runtime, params = [], [], [], []
-    for item in data:
+#    for item in data:
+    for _ in range(1):
         test_error.append(1 - item['test_accuracy'])
         valid_error.append(1 - item['validation_accuracy'])
         runtime.append(item['training_time'])

@@ -67,15 +67,29 @@ def mutate_arch(parent_arch):
             low = 2
         random_node = np.random.randint(low=low, high=adjacency_matrix.shape[-1])
         # Pick one of the parents of the node
-        parent_of_node_to_modify = np.random.choice(adjacency_matrix[:random_node, random_node].nonzero()[0])
-        # Select a new parent for this node, (needs to be different from previous parent)
-        new_parent_of_node = np.random.choice(np.argwhere(adjacency_matrix[:random_node, random_node] == 0).flatten())
-        # Remove old parent from child
-        adjacency_matrix[parent_of_node_to_modify, random_node] = 0
-        # Add new parent to child
-        adjacency_matrix[new_parent_of_node, random_node] = 1
-        # Create new child config
-        return Architecture(adjacency_matrix=adjacency_matrix, node_list=node_list)
+
+        # parent_of_node_to_modify = np.random.choice(adjacency_matrix[:random_node, random_node].nonzero()[0])        
+        parents = adjacency_matrix[:random_node, random_node].nonzero()[0]
+
+        #print('matrix', adjacency_matrix)
+        #print('parents', parents)
+        
+        if parents.any():
+            parent_of_node_to_modify = np.random.choice(parents)
+            
+            # Select a new parent for this node, (needs to be different from previous parent)
+            new_parent_of_node = np.random.choice(np.argwhere(adjacency_matrix[:random_node, random_node] == 0).flatten())
+            # Remove old parent from child
+            adjacency_matrix[parent_of_node_to_modify, random_node] = 0
+            # Add new parent to child
+            adjacency_matrix[new_parent_of_node, random_node] = 1
+            # Create new child config
+            return Architecture(adjacency_matrix=adjacency_matrix, node_list=node_list)
+            
+        else:
+            # don't make any changes
+            return Architecture(adjacency_matrix=adjacency_matrix, node_list=node_list)
+        
     else:  # op_mutation
         OPS = [CONV3X3, CONV1X1, MAXPOOL3X3]
         op_idx_to_change = np.random.randint(len(node_list))
