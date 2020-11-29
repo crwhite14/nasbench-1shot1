@@ -35,7 +35,9 @@ def train_and_eval(config):
     adjacency_matrix, node_list = config.adjacency_matrix, config.node_list
     if type(search_space) == SearchSpace1 or type(search_space) == SearchSpace2:
         # Fill up adjacency matrix and node list with entries for unused nodes
-        adjacency_matrix = upscale_to_nasbench_format(adjacency_matrix)
+        #print('adjacency matrix', adjacency_matrix)
+        #print('node list', node_list)
+        # adjacency_matrix = upscale_to_nasbench_format(adjacency_matrix)
         node_list = [INPUT, *node_list, CONV1X1, OUTPUT]
     else:
         node_list = [INPUT, *node_list, OUTPUT]
@@ -46,7 +48,8 @@ def train_and_eval(config):
 
 
 def random_architecture():
-    adjacency_matrix, node_list = search_space.sample_with_loose_ends()
+    # adjacency_matrix, node_list = search_space.sample_with_loose_ends()
+    adjacency_matrix, node_list = search_space.sample(with_loose_ends=True)
     architecture = Architecture(adjacency_matrix=adjacency_matrix, node_list=node_list)
     return architecture
 
@@ -100,6 +103,42 @@ def mutate_arch(parent_arch):
         node_list[op_idx_to_change] = new_op
         return Architecture(adjacency_matrix=adjacency_matrix, node_list=node_list)
 
+    
+def get_neighborhood(arch):
+    
+    neighbors = []
+    for i in range(len(arch.node_list)):
+        adjacency_matrix, node_list = copy.deepcopy(arch.adjacency_matrix), copy.deepcopy(arch.node_list)
+        OPS = [CONV3X3, CONV1X1, MAXPOOL3X3]
+        OPS.remove(node_list[i])
+        new_op = np.random.choice(OPS)
+        node_list[i] = new_op
+        neighbors.append(Architecture(adjacency_matrix=adjacency_matrix, node_list=node_list))
+
+    if type(search_space) == SearchSpace1:
+        # Node 1 has now choice for node 2 as it always has 2 parents
+        low = 3
+    else:
+        low = 2
+
+    for i in range(low, arch.adjacency_matrix.shape[-1]):
+        parents = arch.adjacency_matrix[:i, i].nonzero()[0]
+
+        for parent in parents:
+            for new_parent in np.argwhere(arch.adjacency_matrix[:i, i] == 0).flatten():
+            # Select a new parent for this node, (needs to be different from previous parent)
+
+                adjacency_matrix = copy.deepcopy(arch.adjacency_matrix)
+                node_list = copy.deepcopy(arch.node_list)
+
+                adjacency_matrix[parent, i] = 0
+                # Add new parent to child
+                adjacency_matrix[new_parent, i] = 1
+                # Create new child config
+                neighbors.append(Architecture(adjacency_matrix=adjacency_matrix, node_list=node_list))
+            
+    return neighbors
+        
 
 def regularized_evolution(cycles, population_size, sample_size):
     """Algorithm for regularized evolution (i.e. aging evolution).
@@ -155,6 +194,57 @@ def regularized_evolution(cycles, population_size, sample_size):
 
     return history
 
+def local_search(cycles, num_init=10):
+    """
+    Local search
+    """
+    print('starting local search')
+    history = []  # Not used by the algorithm, only used to report results.
+
+    # Initialize the search with random models.
+    while len(history) < min(num_init, cycles):
+        model = Model()
+        model.arch = random_architecture()
+        model.validation_accuracy, model.test_accuracy, model.training_time = train_and_eval(model.arch)
+        history.append(model)
+
+    # initialize the first iteration using the best of the initial arches
+    current_model = max(history, key=lambda i: i.validation_accuracy)
+    neighbors = get_neighborhood(current_model.arch)
+    print('len nbrs:', len(neighbors))
+
+    # TODO: this can be cleaned up
+    while len(history) <= cycles:
+        while True:
+            neighbor = Model()
+            neighbor.arch = neighbors.pop()
+            neighbor.validation_accuracy, neighbor.test_accuracy, neighbor.training_time = train_and_eval(neighbor.arch)
+            print('new neighbor. nbrs left:', len(neighbors), 'acc', neighbor.validation_accuracy)
+            history.append(neighbor)
+
+            if neighbor.validation_accuracy > current_model.validation_accuracy:
+                print('found better arch:', neighbor.validation_accuracy)
+                current_model = neighbor
+                neighbors = get_neighborhood(current_model.arch)
+                print('len nbrs:', len(neighbors))
+
+            if len(history) >= cycles or len(neighbors) == 0:
+                break
+    
+        if len(history) >= cycles:
+            break
+
+        current_model = Model()
+        current_model.arch = random_architecture()
+        current_model.validation_accuracy, current_model.test_accuracy, current_model.training_time = train_and_eval(current_model.arch)
+        print('reached local min. new arch:', current_model.validation_accuracy)
+        history.append(model)
+        
+        neighbors = get_neighborhood(current_model.arch)
+        print('len nbrs:', len(neighbors))
+
+    return history
+
 
 def random_search(cycles):
     history = []
@@ -168,9 +258,9 @@ def random_search(cycles):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--run_id', default=0, type=int, nargs='?', help='unique number to identify this run')
-parser.add_argument('--algorithm', default=None, type=str)
+parser.add_argument('--algorithm', default='LS', type=str)
 parser.add_argument('--search_space', default="1", type=str, nargs='?', help='specifies the benchmark')
-parser.add_argument('--n_iters', default=280, type=int, nargs='?', help='number of iterations for optimization method')
+parser.add_argument('--n_iters', default=100, type=int, nargs='?', help='number of iterations for optimization method')
 parser.add_argument('--output_path', default="./experiments", type=str, nargs='?',
                     help='specifies the path where the results will be saved')
 parser.add_argument('--data_dir',
@@ -179,7 +269,7 @@ parser.add_argument('--data_dir',
 parser.add_argument('--pop_size', default=100, type=int, nargs='?', help='population size')
 parser.add_argument('--sample_size', default=10, type=int, nargs='?', help='sample_size')
 parser.add_argument('--seed', default=0, type=int, help='random seed')
-parser.add_argument('--n_repetitions', default=500, type=int, help='number of repetitions')
+parser.add_argument('--n_repetitions', default=1, type=int, help='number of repetitions')
 
 args = parser.parse_args()
 nasbench = api.NASBench(args.data_dir)
@@ -198,7 +288,7 @@ else:
     spaces = [int(args.search_space)]
 
 if args.algorithm is None:
-    algos = ['RE', 'RS']
+    algos = ['RE', 'RS', 'LS']
 else:
     algos = [args.algorithm]
 
@@ -217,8 +307,14 @@ for space in spaces:
             if alg == 'RE':
                 history = regularized_evolution(
                     cycles=args.n_iters, population_size=args.pop_size, sample_size=args.sample_size)
-            else:
+            elif alg == 'RS':
                 history = random_search(cycles=args.n_iters)
+            elif alg == 'LS':
+                history = local_search(cycles=args.n_iters)
+            else:
+                print('alg not supported')
+                raise NotImplementedError()
+                
 
             fh = open(os.path.join(output_path,
                                    'algo_{}_{}_ssp_{}_seed_{}.obj'.format(alg,

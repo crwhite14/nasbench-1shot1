@@ -169,7 +169,8 @@ class DartsWrapper:
         loss = self.criterion(logits, target)
 
         loss.backward()
-        nn.utils.clip_grad_norm(self.model.parameters(), args.grad_clip)
+        nn.utils.clip_grad_norm_(self.model.parameters(), args.grad_clip)
+        
         self.optimizer.step()
 
         prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
