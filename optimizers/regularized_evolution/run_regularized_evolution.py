@@ -153,8 +153,7 @@ def regularized_evolution(cycles, population_size, sample_size):
           tournament.
 
     Returns:
-      history: a list of `Model` instances, representing all the models computed
-          during the evolution experiment.
+      history: [val_acc, test_acc] for every queried architecture
     """
     population = collections.deque()
     history = []  # Not used by the algorithm, only used to report results.
@@ -165,7 +164,7 @@ def regularized_evolution(cycles, population_size, sample_size):
         model.arch = random_architecture()
         model.validation_accuracy, model.test_accuracy, model.training_time = train_and_eval(model.arch)
         population.append(model)
-        history.append(model)
+        history.append([model.validation_accuracy, model.test_accuracy])
 
     # Carry out evolution in cycles. Each cycle produces a model and removes
     # another.
@@ -187,7 +186,7 @@ def regularized_evolution(cycles, population_size, sample_size):
         child.arch = mutate_arch(parent.arch)
         child.validation_accuracy, child.test_accuracy, child.training_time = train_and_eval(child.arch)
         population.append(child)
-        history.append(child)
+        history.append([child.validation_accuracy, child.test_accuracy])
 
         # Remove the oldest model.
         population.popleft()
@@ -200,16 +199,18 @@ def local_search(cycles, num_init=10):
     """
     print('starting local search')
     history = []  # Not used by the algorithm, only used to report results.
+    initial_models = []
 
     # Initialize the search with random models.
     while len(history) < min(num_init, cycles):
         model = Model()
         model.arch = random_architecture()
         model.validation_accuracy, model.test_accuracy, model.training_time = train_and_eval(model.arch)
-        history.append(model)
+        history.append([model.validation_accuracy, model.test_accuracy])
+        initial_models.append(model)
 
     # initialize the first iteration using the best of the initial arches
-    current_model = max(history, key=lambda i: i.validation_accuracy)
+    current_model = max(initial_models, key=lambda i: i.validation_accuracy)
     neighbors = get_neighborhood(current_model.arch)
     print('len nbrs:', len(neighbors))
 
@@ -220,7 +221,7 @@ def local_search(cycles, num_init=10):
             neighbor.arch = neighbors.pop()
             neighbor.validation_accuracy, neighbor.test_accuracy, neighbor.training_time = train_and_eval(neighbor.arch)
             print('new neighbor. nbrs left:', len(neighbors), 'acc', neighbor.validation_accuracy)
-            history.append(neighbor)
+            history.append([neighbor.validation_accuracy, neighbor.test_accuracy])
 
             if neighbor.validation_accuracy > current_model.validation_accuracy:
                 print('found better arch:', neighbor.validation_accuracy)
@@ -238,7 +239,7 @@ def local_search(cycles, num_init=10):
         current_model.arch = random_architecture()
         current_model.validation_accuracy, current_model.test_accuracy, current_model.training_time = train_and_eval(current_model.arch)
         print('reached local min. new arch:', current_model.validation_accuracy)
-        history.append(model)
+        history.append([model.validation_accuracy, model.test_accuracy])
         
         neighbors = get_neighborhood(current_model.arch)
         print('len nbrs:', len(neighbors))
@@ -252,24 +253,24 @@ def random_search(cycles):
         model = Model()
         model.arch = random_architecture()
         model.validation_accuracy, model.test_accuracy, model.training_time = train_and_eval(model.arch)
-        history.append(model)
+        history.append([model.validation_accuracy, model.test_accuracy])
     return history
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--run_id', default=0, type=int, nargs='?', help='unique number to identify this run')
-parser.add_argument('--algorithm', default='LS', type=str)
-parser.add_argument('--search_space', default="1", type=str, nargs='?', help='specifies the benchmark')
-parser.add_argument('--n_iters', default=100, type=int, nargs='?', help='number of iterations for optimization method')
+parser.add_argument('--algorithm', default=None, type=str)
+parser.add_argument('--search_space', default=None, type=str, nargs='?', help='specifies the benchmark')
+parser.add_argument('--n_iters', default=500, type=int, nargs='?', help='number of iterations for optimization method')
 parser.add_argument('--output_path', default="./experiments", type=str, nargs='?',
                     help='specifies the path where the results will be saved')
 parser.add_argument('--data_dir',
-                    default="nasbench_analysis/nasbench_data/108_e/nasbench_only108.tfrecord", type=str,
+                    default="../nas_benchmark_datasets/nasbench_only108.tfrecord", type=str,
                     nargs='?', help='specifies the path to the nasbench data')
-parser.add_argument('--pop_size', default=100, type=int, nargs='?', help='population size')
+parser.add_argument('--pop_size', default=40, type=int, nargs='?', help='population size')
 parser.add_argument('--sample_size', default=10, type=int, nargs='?', help='sample_size')
 parser.add_argument('--seed', default=0, type=int, help='random seed')
-parser.add_argument('--n_repetitions', default=1, type=int, help='number of repetitions')
+parser.add_argument('--n_repetitions', default=500, type=int, help='number of repetitions')
 
 args = parser.parse_args()
 nasbench = api.NASBench(args.data_dir)
@@ -292,16 +293,20 @@ if args.algorithm is None:
 else:
     algos = [args.algorithm]
 
+    
+output_path = os.path.join(args.output_path, "discrete_optimizers")
+os.makedirs(os.path.join(output_path), exist_ok=True)
 
-for space in spaces:
-    search_space = eval('SearchSpace{}()'.format(space))
-    for alg in algos:
-        print("##### Algorithm {} #####".format(alg))
-        for seed in range(args.n_repetitions):
-            print("##### Seed {} #####".format(seed))
-            np.random.seed(seed)
-            output_path = os.path.join(args.output_path, "discrete_optimizers")
-            os.makedirs(os.path.join(output_path), exist_ok=True)
+for seed in range(args.n_repetitions):
+    np.random.seed(seed)
+    print("##### Seed {} #####".format(seed))
+
+    for space in spaces:
+        search_space = eval('SearchSpace{}()'.format(space))
+        print('search space', space)
+        
+        for alg in algos:
+            print("##### Algorithm {} #####".format(alg))
 
             # Set random_seed
             if alg == 'RE':
@@ -313,8 +318,7 @@ for space in spaces:
                 history = local_search(cycles=args.n_iters)
             else:
                 print('alg not supported')
-                raise NotImplementedError()
-                
+                raise NotImplementedError()               
 
             fh = open(os.path.join(output_path,
                                    'algo_{}_{}_ssp_{}_seed_{}.obj'.format(alg,
@@ -324,4 +328,6 @@ for space in spaces:
             pickle.dump(history, fh)
             fh.close()
 
-            print(min([1 - arch.test_accuracy - search_space.test_min_error for arch in history]))
+            #print(min([1 - arch.test_accuracy - search_space.test_min_error for arch in history]))
+            print('best val error', min([1 - arch[0] for arch in history]))
+            print('best test error', min([1 - arch[1] for arch in history]))
