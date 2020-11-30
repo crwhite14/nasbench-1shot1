@@ -275,17 +275,24 @@ class DartsWrapper:
     def save(self, epoch):
         utils.save(self.model, os.path.join(self.args.save, 'one_shot_model_{}.pt'.format(epoch)))
 
-    def load(self, epoch=None):
-        if epoch is not None:
-            model_obj_path = os.path.join(self.args.save, 'one_shot_model_{}.obj'.format(epoch))
-            if os.path.exists(model_obj_path):
-                utils.load(self.model, model_obj_path)
-            else:
-                model_pt_path = os.path.join(self.args.save, 'one_shot_model_{}.pt'.format(epoch))
-                utils.load(self.model, model_pt_path)
-                print('loaded model', model_pt_path)
+    def load(self, epoch=None, ft=False):
+        
+        if ft:
+            model_pt_path = os.path.join(self.args.save, 'ft_model_{}.pt'.format(epoch))
+            utils.load(self.model, model_pt_path)
+            print('loaded model', model_pt_path)
+            
         else:
-            utils.load(self.model, os.path.join(self.args.save, 'weights.obj'))
+            if epoch is not None:
+                model_obj_path = os.path.join(self.args.save, 'one_shot_model_{}.obj'.format(epoch))
+                if os.path.exists(model_obj_path):
+                    utils.load(self.model, model_obj_path)
+                else:
+                    model_pt_path = os.path.join(self.args.save, 'one_shot_model_{}.pt'.format(epoch))
+                    utils.load(self.model, model_pt_path)
+                    print('loaded model', model_pt_path)
+            else:
+                utils.load(self.model, os.path.join(self.args.save, 'weights.obj'))
 
     def get_weights_from_arch(self, arch):
         adjacency_matrix, node_list = arch

@@ -107,7 +107,7 @@ class Random_NAS:
             return ppl
         
         elif steps > 0:
-            self.model.load(epoch=49)
+            self.model.load(epoch=49, ft=True)
                 
         for _ in range(steps):
             # tune the shared weights
@@ -298,7 +298,7 @@ def main(args):
 
     if True:
         # load the supernet
-        searcher.model.load(epoch=49)
+        searcher.model.load(epoch=49, ft=True)
         
         # run local search
         ls_epochs = 0
