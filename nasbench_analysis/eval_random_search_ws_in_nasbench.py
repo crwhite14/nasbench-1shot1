@@ -24,63 +24,64 @@ def get_directory_list(path):
             directory_list += get_directory_list(new_path)
     return directory_list
 
-
 def eval_random_ws_model(config, model):
     model_list = pickle.load(open(model, 'rb'))
-    adjacency_matrix, node_list = model_list[0][0]
-    if int(config['search_space']) == int('1'):
-        adjacency_matrix = upscale_to_nasbench_format(adjacency_matrix)
-        node_list = [INPUT, *node_list, CONV1X1, OUTPUT]
-    elif int(config['search_space']) == int('2'):
-        adjacency_matrix = upscale_to_nasbench_format(adjacency_matrix)
-        node_list = [INPUT, *node_list, CONV1X1, OUTPUT]
-    elif int(config['search_space']) == int('3'):
-        node_list = [INPUT, *node_list, OUTPUT]
-    else:
-        raise ValueError('Unknown search space')
 
-    # Convert the adjacency matrix in format for nasbench
-    adjacency_list = adjacency_matrix.astype(np.int).tolist()
-    model_spec = api.ModelSpec(matrix=adjacency_list, ops=node_list)
-    # Query nasbench
-    data = nasbench.query(model_spec)
-    valid_error, test_error = [], []
-    for item in data:
-        test_error.append(1 - item['test_accuracy'])
-        valid_error.append(1 - item['validation_accuracy'])
-    return test_error, valid_error
+    accs = []
+    
+    for model in model_list:
+        adjacency_matrix, node_list = model[0]
+        
+        if int(config['search_space']) == int('1'):
+            adjacency_matrix = upscale_to_nasbench_format(adjacency_matrix)
+            node_list = [INPUT, *node_list, CONV1X1, OUTPUT]
+        elif int(config['search_space']) == int('2'):
+            adjacency_matrix = upscale_to_nasbench_format(adjacency_matrix)
+            node_list = [INPUT, *node_list, CONV1X1, OUTPUT]
+        elif int(config['search_space']) == int('3'):
+            node_list = [INPUT, *node_list, OUTPUT]
+        else:
+            raise ValueError('Unknown search space')
+
+        # Convert the adjacency matrix in format for nasbench
+        adjacency_list = adjacency_matrix.astype(np.int).tolist()
+        model_spec = api.ModelSpec(matrix=adjacency_list, ops=node_list)
+        
+        # Query nasbench
+        data = nasbench.query(model_spec)
+        valid_acc, test_acc = [], []
+        for item in data:
+            test_acc.append(item['test_accuracy'])
+            valid_acc.append(item['validation_accuracy'])
+        accs.append([np.mean(valid_acc), np.mean(test_acc)])
+    return accs
 
 
-def eval_directory(path):
+def eval_directory(path, file):
     """Evaluates all one-shot architecture methods in the directory."""
     # Read in config
     with open(os.path.join(path, 'config.json')) as fp:
         config = json.load(fp)
     # Accumulate all one-shot models
-    random_ws_archs = glob.glob(os.path.join(path, 'full_val_architecture_epoch_*.obj'))
+    # random_ws_archs = glob.glob(os.path.join(path, 'full_val_architecture_epoch_*.obj'))
+    random_ws_archs = glob.glob(os.path.join(path, file))
+    
     # Sort them by date
     random_ws_archs.sort(key=natural_keys)
     # Eval all models on nasbench
     test_errors = []
     valid_errors = []
+
     for model in random_ws_archs:
-        test, valid = eval_random_ws_model(config=config, model=model)
-        test_errors.append(test)
-        valid_errors.append(valid)
+        result = eval_random_ws_model(config=config, model=model)
+        
+    with open(os.path.join(path, 'local_search_result.obj'), 'wb') as fp:
+        pickle.dump(result, fp)
 
-    with open(os.path.join(path, 'one_shot_validation_errors.obj'), 'wb') as fp:
-        pickle.dump(valid_errors, fp)
-
-    with open(os.path.join(path, 'one_shot_test_errors.obj'), 'wb') as fp:
-        pickle.dump(test_errors, fp)
 
 
 def main():
-    for directory in get_directory_list("experiments/random_ws/ss_20201129-002145_1_100/"):
-        try:
-            eval_directory(directory)
-        except Exception as e:
-            print('error', e, directory)
+    eval_directory('experiments/ft0_nov29/', file='local_search_300.obj')
 
 
 if __name__ == '__main__':
