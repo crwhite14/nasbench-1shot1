@@ -91,12 +91,96 @@ class Random_NAS:
             # If epoch has changed then evaluate the network.
             if epochs < self.model.epochs:
                 epochs = self.model.epochs
-                self.get_eval_arch(1)
+                #self.get_eval_arch(1)
             if self.iters % 500 == 0:
                 self.save()
         self.save()
 
-    def get_eval_arch(self, rounds=None):
+    def fine_tune(self, arch, steps=0):
+        
+        if steps < 0:
+            try:
+                # evaluate it using shared weights (really quick?)
+                ppl = self.model.evaluate(arch)
+            except Exception as e:
+                ppl = 1000000
+            return ppl
+                
+        for _ in range(steps):
+            # tune the shared weights
+            pass
+        
+        try:
+            ppl = self.model.evaluate(arch, split='valid')
+        except Exception as e:
+            ppl = 1000000     
+        
+        return ppl
+            
+    def local_search(self, num_init=10, steps=0, cycles=300):
+        """
+        Local search
+        """
+        print('starting local search')
+        history = []  # Not used by the algorithm, only used to report results.
+        initial_models = []
+
+        # Initialize the search with random models.
+        while len(history) < min(num_init, cycles):
+            arch = self.model.sample_arch()
+            valid_error = self.fine_tune(arch, steps=steps)
+            history.append([arch, valid_error])
+            initial_models.append([arch, valid_error])
+            print('initial model:', valid_error)
+
+        # initialize the first iteration using the best of the initial arches
+        current_model = min(initial_models, key=lambda i: i[1])
+        neighbors = self.model.get_nbhd(current_model[0])
+        print('len nbrs:', len(neighbors))
+
+        # TODO: this can be cleaned up
+        while len(history) <= cycles:
+            while True:
+                neighbor_arch = neighbors.pop()
+                neighbor_valid_error = self.fine_tune(neighbor_arch, steps=steps)
+                print('new neighbor. nbrs left:', len(neighbors), 'error', neighbor_valid_error)
+                history.append([neighbor_arch, neighbor_valid_error])
+
+                if neighbor_valid_error < current_model[1]:
+                    print('found better arch:', neighbor_valid_error, 'vs', current_model[1])
+                    current_model = [neighbor_arch, neighbor_valid_error]
+                    neighbors = self.model.get_nbhd(current_model[0])
+                    print('len nbrs:', len(neighbors))
+                    
+                    with open(os.path.join(self.save_dir,
+                                           'local_search_{}.obj'.format(len(history))), 'wb') as f:
+                        pickle.dump(history, f)
+
+                if len(history) >= cycles or len(neighbors) == 0:
+                    break
+
+            if len(history) >= cycles:
+                break
+            
+            arch = self.model.sample_arch()
+            valid_error = self.fine_tune(arch, steps=steps)
+            current_model = [arch, valid_error]
+            print('reached local min. new arch:', current_model[1])
+            history.append(current_model)
+            neighbors = self.model.get_nbhd(current_model[0])
+            print('len nbrs:', len(neighbors))
+
+        print('start full history')
+        print(history)
+
+        with open(os.path.join(self.save_dir,
+                               'local_search_{}.obj'.format(len(history))), 'wb') as f:
+            pickle.dump(history, f)
+                
+        return history
+
+        
+    def get_eval_arch(self, rounds=None, inner_rounds=5):
         # n_rounds = int(self.B / 7 / 1000)
         if rounds is None:
             n_rounds = max(1, int(self.B / 10000))
@@ -104,14 +188,19 @@ class Random_NAS:
             n_rounds = rounds
         best_rounds = []
         for r in range(n_rounds):
+            print('starting round', r)
             sample_vals = []
-            for _ in range(1000):
+            for k in range(inner_rounds):
+                print('round', r, 'inner', k)
+                
+                # sample a random architecture
                 arch = self.model.sample_arch()
                 try:
+                    # evaluate it using shared weights (really quick?)
                     ppl = self.model.evaluate(arch)
                 except Exception as e:
                     ppl = 1000000
-                logging.info(arch)
+                # logging.info(arch)
                 logging.info('objective_val: %.3f' % ppl)
                 sample_vals.append((arch, ppl))
 
@@ -123,6 +212,7 @@ class Random_NAS:
             sample_vals = sorted(sample_vals, key=lambda x: x[1])
 
             full_vals = []
+            # train the top five on the full validation set
             if 'split' in inspect.getfullargspec(self.model.evaluate).args:
                 for i in range(5):
                     arch = sample_vals[i][0]
@@ -186,8 +276,7 @@ def main(args):
     else:
         data_size = 25000
         time_steps = 1
-
-    B = int(args.epochs * data_size / args.batch_size / time_steps)
+    
     if args.benchmark == 'cnn':
         from optimizers.random_search_with_weight_sharing.darts_wrapper_discrete import DartsWrapper
         model = DartsWrapper(save_dir, args.seed, args.batch_size, args.grad_clip, args.epochs,
@@ -195,30 +284,55 @@ def main(args):
                              init_channels=args.init_channels, cutout=args.cutout)
     else:
         raise ValueError('Benchmarks other cnn on cifar are not available')
+    
+    B = int(args.epochs * data_size / args.batch_size / time_steps)
+    # B = epochs * 390
+    # B = 3    
 
     searcher = Random_NAS(B, model, args.seed, save_dir)
     logging.info('budget: %d' % (searcher.B))
-    if not args.eval_only:
-        searcher.run()
-        archs = searcher.get_eval_arch()
+
+    if True:
+        
+        # load the supernet
+        searcher.model.load(epoch=49)
+        
+        # run local search
+        archs = searcher.local_search(num_init=10, steps=-1, cycles=300)
+        
     else:
-        np.random.seed(args.seed + 1)
-        archs = searcher.get_eval_arch(2)
-    logging.info(archs)
-    arch = ' '.join([str(a) for a in archs[0][0]])
-    with open('/tmp/arch', 'w') as f:
-        f.write(arch)
-    return arch
+        
+        # train supernet
+
+        if not args.eval_only:
+            logging.info('starting searcher.run')
+            searcher.run()
+            logging.info('finished searcher.run')
+            archs = [[0]]
+            #archs = searcher.get_eval_arch(rounds=2)
+            #logging.info('finished get_eval_arch')
+            print('num archs:', len(archs))
+        else:
+            np.random.seed(args.seed + 1)
+            archs = searcher.get_eval_arch(2)
+        logging.info('printing archs')    
+        logging.info(archs)
+        arch = None
+        #logging.info('saving archs')    
+        #arch = ' '.join([str(a) for a in archs[0][0]])
+        #with open('/tmp/arch', 'w') as f:
+        #    f.write(arch)
+        return arch
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Args for SHA with weight sharing')
     parser.add_argument('--benchmark', dest='benchmark', type=str, default='cnn')
-    parser.add_argument('--seed', dest='seed', type=int, default=100)
+    parser.add_argument('--seed', dest='seed', type=int, default=0)
     parser.add_argument('--epochs', dest='epochs', type=int, default=50)
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=64)
     parser.add_argument('--grad_clip', dest='grad_clip', type=float, default=0.25)
-    parser.add_argument('--save_dir', dest='save_dir', type=str, default=None)
+    parser.add_argument('--save_dir', dest='save_dir', type=str, default='/home/ubuntu/nasbench-1shot1_crwhite/experiments/random_ws/ss_20201130-033347_1_0')
     parser.add_argument('--eval_only', dest='eval_only', type=int, default=0)
     # CIFAR-10 only argument.  Use either 16 or 24 for the settings for random_ws search
     # with weight-sharing used in our experiments.

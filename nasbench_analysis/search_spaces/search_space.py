@@ -32,6 +32,34 @@ class SearchSpace:
         """Based on given connectivity pattern create the corresponding adjacency matrix."""
         pass
 
+    def get_neighborhood(self, arch, low):
+        neighbors = []
+        for i in range(len(arch[1])):
+            adjacency_matrix, node_list = copy.deepcopy(arch[0]), copy.deepcopy(arch[1])
+            OPS = [CONV3X3, CONV1X1, MAXPOOL3X3]
+            OPS.remove(node_list[i])
+            new_op = np.random.choice(OPS)
+            node_list[i] = new_op
+            neighbors.append([adjacency_matrix, node_list])
+
+        for i in range(low, arch[0].shape[-1]):
+            parents = arch[0][:i, i].nonzero()[0]
+
+            for parent in parents:
+                for new_parent in np.argwhere(arch[0][:i, i] == 0).flatten():
+                # Select a new parent for this node, (needs to be different from previous parent)
+
+                    adjacency_matrix = copy.deepcopy(arch[0])
+                    node_list = copy.deepcopy(arch[1])
+
+                    adjacency_matrix[parent, i] = 0
+                    # Add new parent to child
+                    adjacency_matrix[new_parent, i] = 1
+                    # Create new child config
+                    neighbors.append([adjacency_matrix, node_list])
+
+        return neighbors
+    
     def sample(self, with_loose_ends, upscale=True):
         if with_loose_ends:
             adjacency_matrix_sample = self._sample_adjacency_matrix_with_loose_ends()

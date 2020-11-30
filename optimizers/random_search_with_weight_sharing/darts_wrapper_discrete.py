@@ -283,6 +283,7 @@ class DartsWrapper:
             else:
                 model_pt_path = os.path.join(self.args.save, 'one_shot_model_{}.pt'.format(epoch))
                 utils.load(self.model, model_pt_path)
+                print('loaded model', model_pt_path)
         else:
             utils.load(self.model, os.path.join(self.args.save, 'weights.obj'))
 
@@ -327,3 +328,12 @@ class DartsWrapper:
     def sample_arch(self):
         adjacency_matrix, op_list = self.search_space.sample(with_loose_ends=True, upscale=False)
         return adjacency_matrix, op_list
+    
+    def get_nbhd(self, arch):
+        if type(self.search_space) == SearchSpace1:
+            # Node 1 has now choice for node 2 as it always has 2 parents
+            low = 3
+        else:
+            low = 2        
+
+        return self.search_space.get_neighborhood(arch, low=low)

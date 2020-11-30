@@ -76,7 +76,7 @@ def eval_directory(path):
 
 
 def main():
-    for directory in get_directory_list("experiments/enas/"):
+    for directory in get_directory_list("experiments/random_ws/ss_20201129-002145_1_100/"):
         try:
             eval_directory(directory)
         except Exception as e:
@@ -85,5 +85,5 @@ def main():
 
 if __name__ == '__main__':
     nasbench = NasbenchWrapper(
-        dataset_file='/home/siemsj/projects/darts_weight_sharing_analysis/nasbench_analysis/nasbench_data/108_e/nasbench_full.tfrecord')
+        dataset_file='/home/ubuntu/nas_benchmark_datasets/nasbench_full.tfrecord')
     main()
