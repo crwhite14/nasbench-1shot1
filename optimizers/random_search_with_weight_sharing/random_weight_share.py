@@ -100,15 +100,19 @@ class Random_NAS:
         
         if steps < 0:
             try:
-                # evaluate it using shared weights (really quick?)
+                # evaluate using shared weights
                 ppl = self.model.evaluate(arch)
             except Exception as e:
                 ppl = 1000000
             return ppl
+        
+        elif steps > 0:
+            self.model.load(epoch=49)
                 
         for _ in range(steps):
             # tune the shared weights
-            pass
+            self.model.train_batch(arch)
+            self.iters += 1
         
         try:
             ppl = self.model.evaluate(arch, split='valid')
@@ -293,17 +297,17 @@ def main(args):
     logging.info('budget: %d' % (searcher.B))
 
     if True:
-        
         # load the supernet
         searcher.model.load(epoch=49)
         
         # run local search
-        archs = searcher.local_search(num_init=10, steps=-1, cycles=300)
+        ls_epochs = 0
+        steps = int(ls_epochs * data_size / args.batch_size)
+        archs = searcher.local_search(num_init=10, steps=steps, cycles=300)
         
     else:
         
         # train supernet
-
         if not args.eval_only:
             logging.info('starting searcher.run')
             searcher.run()
@@ -332,7 +336,9 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', dest='epochs', type=int, default=50)
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=64)
     parser.add_argument('--grad_clip', dest='grad_clip', type=float, default=0.25)
-    parser.add_argument('--save_dir', dest='save_dir', type=str, default='/home/ubuntu/nasbench-1shot1_crwhite/experiments/random_ws/ss_20201130-033347_1_0')
+    parser.add_argument('--save_dir', dest='save_dir', type=str, default=None)
+    # /home/ubuntu/nasbench-1shot1/experiments/ft0_nov29/
+    # '/home/ubuntu/nasbench-1shot1_crwhite/experiments/random_ws/ss_20201130-033347_1_0'
     parser.add_argument('--eval_only', dest='eval_only', type=int, default=0)
     # CIFAR-10 only argument.  Use either 16 or 24 for the settings for random_ws search
     # with weight-sharing used in our experiments.
