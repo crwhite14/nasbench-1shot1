@@ -280,7 +280,7 @@ class DartsWrapper:
     def load(self, epoch=None, ft=False):
         
         if ft:
-            model_pt_path = os.path.join(self.args.save, 'ft_model_{}.pt'.format(epoch))
+            model_pt_path = os.path.join('/home/ubuntu/nasbench-1shot1_crwhite/experiments/', 'ft_model_{}.pt'.format(epoch))
             utils.load(self.model, model_pt_path)
             print('loaded model', model_pt_path)
             
