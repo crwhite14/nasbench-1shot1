@@ -188,7 +188,9 @@ class DartsWrapper:
             self.train_iter = iter(self.train_queue)
             valid_err = self.evaluate(arch)
             logging.info('epoch %d  |  train_acc %f  |  valid_acc %f' % (self.epochs, self.top1.avg, 1 - valid_err))
-            self.save(epoch=self.epochs)
+            
+            if self.epochs % 20 == 0:
+                self.save(epoch=self.epochs)
 
     def evaluate(self, arch, split=None):
         # Return error since we want to minimize obj val

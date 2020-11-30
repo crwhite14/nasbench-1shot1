@@ -121,7 +121,7 @@ class Random_NAS:
         
         return ppl
             
-    def local_search(self, num_init=10, steps=0, cycles=300):
+    def local_search(self, num_init=10, steps=0, cycles=110):
         """
         Local search
         """
@@ -150,15 +150,16 @@ class Random_NAS:
                 print('new neighbor. nbrs left:', len(neighbors), 'error', neighbor_valid_error)
                 history.append([neighbor_arch, neighbor_valid_error])
 
+                if len(history) % 10 == 0:
+                    with open(os.path.join(self.save_dir,
+                                           'local_search_{}.obj'.format(len(history))), 'wb') as f:
+                        pickle.dump(history, f)
+                
                 if neighbor_valid_error < current_model[1]:
                     print('found better arch:', neighbor_valid_error, 'vs', current_model[1])
                     current_model = [neighbor_arch, neighbor_valid_error]
                     neighbors = self.model.get_nbhd(current_model[0])
                     print('len nbrs:', len(neighbors))
-                    
-                    with open(os.path.join(self.save_dir,
-                                           'local_search_{}.obj'.format(len(history))), 'wb') as f:
-                        pickle.dump(history, f)
 
                 if len(history) >= cycles or len(neighbors) == 0:
                     break
@@ -173,6 +174,11 @@ class Random_NAS:
             history.append(current_model)
             neighbors = self.model.get_nbhd(current_model[0])
             print('len nbrs:', len(neighbors))
+            
+            if len(history) % 10 == 0:
+                with open(os.path.join(self.save_dir,
+                                       'local_search_{}.obj'.format(len(history))), 'wb') as f:
+                    pickle.dump(history, f)
 
         print('start full history')
         print(history)
@@ -301,7 +307,7 @@ def main(args):
         searcher.model.load(epoch=49, ft=True)
         
         # run local search
-        ls_epochs = 0
+        ls_epochs = args.ls_epochs
         steps = int(ls_epochs * data_size / args.batch_size)
         archs = searcher.local_search(num_init=10, steps=steps, cycles=300)
         
@@ -331,14 +337,15 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Args for SHA with weight sharing')
-    parser.add_argument('--benchmark', dest='benchmark', type=str, default='cnn')
+
     parser.add_argument('--seed', dest='seed', type=int, default=0)
+    parser.add_argument('--save_dir', dest='save_dir', type=str, default='/home/ubuntu/nasbench-1shot1_crwhite/experiments/ft10_0/')
+    parser.add_argument('--ls_epochs', dest='ls_epochs', type=int, default=0)
+    
+    parser.add_argument('--benchmark', dest='benchmark', type=str, default='cnn')
     parser.add_argument('--epochs', dest='epochs', type=int, default=50)
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=64)
     parser.add_argument('--grad_clip', dest='grad_clip', type=float, default=0.25)
-    parser.add_argument('--save_dir', dest='save_dir', type=str, default=None)
-    # /home/ubuntu/nasbench-1shot1/experiments/ft0_nov29/
-    # '/home/ubuntu/nasbench-1shot1_crwhite/experiments/random_ws/ss_20201130-033347_1_0'
     parser.add_argument('--eval_only', dest='eval_only', type=int, default=0)
     # CIFAR-10 only argument.  Use either 16 or 24 for the settings for random_ws search
     # with weight-sharing used in our experiments.
