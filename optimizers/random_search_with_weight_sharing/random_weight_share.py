@@ -152,7 +152,7 @@ class Random_NAS:
 
                 if len(history) % 10 == 0:
                     with open(os.path.join(self.save_dir,
-                                           'local_search_{}.obj'.format(len(history))), 'wb') as f:
+                                           'local_search_{}_{}.obj'.format(self.seed, len(history))), 'wb') as f:
                         pickle.dump(history, f)
                 
                 if neighbor_valid_error < current_model[1]:
@@ -309,7 +309,7 @@ def main(args):
         # run local search
         ls_epochs = args.ls_epochs
         steps = int(ls_epochs * data_size / args.batch_size)
-        archs = searcher.local_search(num_init=10, steps=steps, cycles=300)
+        archs = searcher.local_search(num_init=10, steps=steps, cycles=110)
         
     else:
         
